@@ -1,34 +1,38 @@
 /*
 Simple script to move my tiny 6dof robotic arm
 */
+#include <Arduino.h>
+#include <TMC2209.h>
 #include <math.h>
 
 #define PI 3.1415926535897932384626433832795
 
 //driver for the axis 1
-#define PUL1_PIN 39
-#define DIR1_PIN 37
+#define PUL1_PIN 37
+#define DIR1_PIN 35
 //driver for the axis 2
-#define PUL2_PIN 43
-#define DIR2_PIN 41
+#define PUL2_PIN 27
+#define DIR2_PIN 25
 //driver for the axis 3
-#define PUL3_PIN 47
-#define DIR3_PIN 45
+#define PUL3_PIN A6
+#define DIR3_PIN A7
 //driver for the axis 4
-#define PUL4_PIN 46
-#define DIR4_PIN 48
+#define PUL4_PIN A4
+#define DIR4_PIN A5
 //driver for the axis 5
-#define PUL5_PIN A6
-#define DIR5_PIN A7
+#define PUL5_PIN A2
+#define DIR5_PIN A3
 //driver for the axis 6
 #define PUL6_PIN A0
 #define DIR6_PIN A1
 
 //enable pin for the axis 3, 2 and 1
-#define EN321_PIN 32
-#define EN4_PIN A8
-#define EN5_PIN A2
-#define EN6_PIN 38
+#define EN1_PIN 33
+#define EN2_PIN 23
+#define EN3_PIN 2
+#define EN4_PIN 2
+#define EN5_PIN 2
+#define EN6_PIN 2
 
 double curPos1 = 0.0;
 double curPos2 = 0.0;
@@ -59,8 +63,21 @@ const double d3 = 0.0;
 const double d4 = 117.50;
 const double d6 = 28.0;
 
+const long SERIAL_BAUD_RATE = 115200;
+const uint8_t RUN_CURRENT_PERCENT = 70;
+const uint8_t HOLD_CURRENT_PERCENT = 70;
+
+// Instantiate TMC2209
+TMC2209 stepper_driver[4];
+const TMC2209::SerialAddress SERIAL_ADDRESS[4] = {TMC2209::SERIAL_ADDRESS_0,
+    TMC2209::SERIAL_ADDRESS_1,
+    TMC2209::SERIAL_ADDRESS_2,
+    TMC2209::SERIAL_ADDRESS_3};
+    
 void setup()
 {
+  Serial.begin(115200);
+
   pinMode(PUL1_PIN, OUTPUT);
   pinMode(DIR1_PIN, OUTPUT);
   pinMode(PUL2_PIN, OUTPUT);
@@ -74,11 +91,62 @@ void setup()
   pinMode(PUL6_PIN, OUTPUT);
   pinMode(DIR6_PIN, OUTPUT);
 
-  pinMode(EN321_PIN, OUTPUT);
+  pinMode(EN1_PIN, OUTPUT);
+  pinMode(EN2_PIN, OUTPUT);
+  pinMode(EN3_PIN, OUTPUT);
   pinMode(EN4_PIN, OUTPUT);
   pinMode(EN5_PIN, OUTPUT);
   pinMode(EN6_PIN, OUTPUT);
   
+  digitalWrite(PUL1_PIN, HIGH); // gear ratio = 96/20 = 4.8
+  digitalWrite(DIR1_PIN, HIGH); //LOW = negative direction
+  
+  digitalWrite(PUL2_PIN, HIGH); // gear ratio = 4
+  digitalWrite(DIR2_PIN, HIGH); //LOW = positive direction
+  
+  digitalWrite(PUL3_PIN, HIGH); // gear ratio = 5
+  digitalWrite(DIR3_PIN, LOW); //HIGH = negative direction
+  
+  digitalWrite(PUL4_PIN, HIGH); // gear ratio = 56/20 = 2.8
+  digitalWrite(DIR4_PIN, HIGH); //LOW = positive direction
+  
+  digitalWrite(PUL5_PIN, HIGH); // gear ratio = 42/20 = 2.1
+  digitalWrite(DIR5_PIN, HIGH); //LOW = positive direction
+  
+  digitalWrite(PUL6_PIN, HIGH); // gear ratio = 1
+  digitalWrite(DIR6_PIN, HIGH); //LOW = positive direction
+
+  // all joints disabled!
+  digitalWrite(EN1_PIN, HIGH);
+  digitalWrite(EN2_PIN, HIGH);
+  digitalWrite(EN3_PIN, HIGH);
+  digitalWrite(EN4_PIN, HIGH);
+  digitalWrite(EN5_PIN, HIGH);
+  digitalWrite(EN6_PIN, HIGH);
+
+  int i;
+  for (i = 0; i < 4; i++){
+    stepper_driver[i].setup(Serial1, SERIAL_BAUD_RATE, SERIAL_ADDRESS[i]);
+    if (stepper_driver[i].isSetupAndCommunicating())
+    {
+      Serial.print("Stepper driver ");
+      Serial.print(i);
+      Serial.println(" setup and communicating!");
+    }
+    else
+    {
+      Serial.print("Stepper driver ");
+      Serial.print(i);
+      Serial.println(" Not setup and communicating!");
+      continue;
+    }
+    stepper_driver[i].moveUsingStepDirInterface();
+    stepper_driver[i].setMicrostepsPerStepPowerOfTwo(5);
+    stepper_driver[i].setRunCurrent(100);
+    stepper_driver[i].setHoldCurrent(50);
+    stepper_driver[i].enable();   
+  }
+
   digitalWrite(PUL1_PIN, LOW); // gear ratio = 96/20 = 4.8
   digitalWrite(DIR1_PIN, LOW); //LOW = negative direction
   
@@ -86,7 +154,7 @@ void setup()
   digitalWrite(DIR2_PIN, LOW); //LOW = positive direction
   
   digitalWrite(PUL3_PIN, LOW); // gear ratio = 5
-  digitalWrite(DIR3_PIN, LOW); //LOW = negative direction
+  digitalWrite(DIR3_PIN, HIGH); //LOW = negative direction
   
   digitalWrite(PUL4_PIN, LOW); // gear ratio = 56/20 = 2.8
   digitalWrite(DIR4_PIN, LOW); //LOW = positive direction
@@ -96,21 +164,15 @@ void setup()
   
   digitalWrite(PUL6_PIN, LOW); // gear ratio = 1
   digitalWrite(DIR6_PIN, LOW); //LOW = positive direction
-
-  // all joints disabled!
-  digitalWrite(EN321_PIN, HIGH);
-  digitalWrite(EN4_PIN, HIGH);
-  digitalWrite(EN5_PIN, HIGH);
-  digitalWrite(EN6_PIN, HIGH); 
-
-  //Serial.begin(9600);
 }
 
 void loop()
 {
   // enable all joints
-  delay(10000);
-  digitalWrite(EN321_PIN, LOW);
+  delay(3000);
+  digitalWrite(EN1_PIN, LOW);
+  digitalWrite(EN2_PIN, LOW);
+  digitalWrite(EN3_PIN, LOW);
   digitalWrite(EN4_PIN, LOW);
   digitalWrite(EN5_PIN, LOW);
   digitalWrite(EN6_PIN, LOW);
@@ -118,8 +180,10 @@ void loop()
   // go to the home position (all joints equal to 0)
   // joint #2
   digitalWrite(DIR2_PIN, HIGH);
-  int delValue=4000;
-  int incValue = 7;
+  //int delValue=4000;
+  //int incValue = 7;
+  int delValue=1000;
+  int incValue = 1;
   int accRate=530;
   int totSteps=2791*2;
   for (int i=0; i < totSteps; i++)
@@ -148,9 +212,9 @@ void loop()
     delayMicroseconds(delValue);
   }
   // joint #3
-  digitalWrite(DIR3_PIN, HIGH);
-  delValue=4000;
-  incValue=7;
+  digitalWrite(DIR3_PIN, LOW);
+  delValue=1000;
+  incValue=1;
   accRate=530;
   totSteps=6569;
   for (int i=0; i < totSteps; i++)
@@ -180,8 +244,8 @@ void loop()
   }
   // joint #5
   digitalWrite(DIR5_PIN, HIGH);
-  delValue=4000;
-  incValue=7;
+  delValue=1000;
+  incValue=1;
   accRate=530;
   totSteps=90/dl5;
   for (int i=0; i < totSteps; i++)
@@ -280,8 +344,8 @@ void loop()
   // come back from home position to fold position
   // joint #5
   digitalWrite(DIR5_PIN, LOW);
-  delValue=4000;
-  incValue=7;
+  delValue=1000;
+  incValue=1;
   accRate=530;
   totSteps=90/dl5;
   for (int i=0; i < totSteps; i++)
@@ -310,9 +374,9 @@ void loop()
     delayMicroseconds(delValue);
   }
   // joint #3
-  digitalWrite(DIR3_PIN, LOW);
-  delValue=4000;
-  incValue=7;
+  digitalWrite(DIR3_PIN, HIGH);
+  delValue=1000;
+  incValue=1;
   accRate=530;
   totSteps=6569;
   for (int i=0; i < totSteps; i++)
@@ -342,8 +406,8 @@ void loop()
   }
   // joint #2
   digitalWrite(DIR2_PIN, LOW);
-  delValue=4000;
-  incValue=7;
+  delValue=1000;
+  incValue=1;
   accRate=530;
   totSteps=2791*2;
   for (int i=0; i < totSteps; i++)
@@ -372,7 +436,9 @@ void loop()
     delayMicroseconds(delValue);
   }
   // all joints disabled!
-  digitalWrite(EN321_PIN, HIGH);
+  digitalWrite(EN1_PIN, HIGH);
+  digitalWrite(EN2_PIN, HIGH);
+  digitalWrite(EN3_PIN, HIGH);
   digitalWrite(EN4_PIN, HIGH);
   digitalWrite(EN5_PIN, HIGH);
   digitalWrite(EN6_PIN, HIGH); 
@@ -501,7 +567,7 @@ void goTrajectory(float* Jf){
   }
   // joint #3
   if (Jf[2]-curPos3>0.0) { // positive direction of rotation
-    digitalWrite(DIR3_PIN, LOW);
+    digitalWrite(DIR3_PIN, HIGH);
     while (Jf[2]-curPos3>dl3/2.0) {
       if (PULstat3 == 0) {
         digitalWrite(PUL3_PIN, HIGH);
@@ -517,7 +583,7 @@ void goTrajectory(float* Jf){
       }
     }
   } else {
-    digitalWrite(DIR3_PIN, HIGH);
+    digitalWrite(DIR3_PIN, LOW);
     while (-Jf[2]+curPos3>dl3/2.0) {
       if (PULstat3 == 0) {
         digitalWrite(PUL3_PIN, HIGH);
